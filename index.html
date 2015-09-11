@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script type="text/javascript" src="http://code.jquery.com/jquery-1.6.3.min.js"></script>
+    <script type="text/javascript" src="coffee-script.js"></script>
+    <script type="text/coffeescript">
+class Game
+  constructor: (@width, @height, @maxage = 1) ->
+    @data = @createBoard @width, @height
+    @newdata = @createBoard @width, @height
+    @seed()
+
+  createBoard: () ->
+    b = new Array(@width)
+    b[x] = new Array(@height) for x in [0..@width-1]
+    return b
+
+  seed: () ->
+    @setCellState x, y, Math.floor(Math.random() * 2) for x in [0..@width-1] for y in [0..@height-1]
+
+  tick: () ->
+    @tickCell x, y for x in [0..@width-1] for y in [0..@height-1]
+    [@data, @newdata] = [@newdata, @data]
+
+  tickCell: (x, y) ->
+    neighborCount = @neighbors x, y
+    @setCellState x, y, ((neighborCount == 3) or (neighborCount == 2 && @cellState x,y )), @newdata, @data[x][y]
+
+  neighbors: (x, y) ->
+    # NW, N, NE, W, E, SW, S, SE
+    (@cellValue x-1, y-1) + (@cellValue x, y-1) + (@cellValue x+1, y-1) + (@cellValue x-1, y) + (@cellValue x+1, y) + (@cellValue x-1, y+1) + (@cellValue x, y+1) + (@cellValue x+1, y+1)
+
+  cellValue: (x, y) ->
+    Math.min (@cellState x, y), 1
+
+  cellState: (x, y, data = @data) ->
+    x >= 0 and y >= 0 and y < @height and x < @width and data[x][y]
+
+  setCellState: (x, y, boolValue, data = @data, oldValue = 0) ->
+    val = if boolValue then (Math.min oldValue + 1, @maxage) else 0
+    data[x][y] = val
+
+  toggleCell: (x, y) ->
+    @setCellState x, y, !(@cellState x, y)
+
+class GamePresenter
+  constructor: (@boardWidth, @boardHeight, @tickInterval, @cellWidth = 20, @cellHeight = @cellWidth, @padding = 1) ->
+    @maxage = 20
+    @colorstep = 9
+  
+    # set up UI
+    elem = @generate boardWidth, boardHeight
+    $('html').prepend elem
+    @canvas = elem[0].getContext('2d')
+
+    # set up input
+    self = this
+    elem.click ((e) -> self.click(e))
+
+    # buttons
+    $('#button_togglepause').click ((e) -> self.togglepause())
+    $('#button_reset').click ((e) -> self.reset())
+    $('#button_clear').click (() -> self.clear())
+
+    # creates the board and draw
+    @reset()
+
+  reset: () ->
+    @game = new Game @boardWidth, @boardHeight, @maxage
+    @draw()
+
+  clear: () ->
+    @game.setCellState xx, yy, false for xx in [0..@boardWidth-1] for yy in [0..@boardHeight]
+    @draw()
+    @pause()
+
+  start: () ->
+    self = this
+    @pause() # clear existing timers
+    @timerHandle = setInterval (() -> self.tick()), @tickInterval
+
+  togglepause: () ->
+    if @timerHandle then @pause() else @start()
+
+  pause: () ->
+    clearInterval @timerHandle if @timerHandle != null
+    @timerHandle = null
+
+  generate: (boardWidth, boardHeight) ->
+    canvasWidth = (@padding + @cellWidth) * boardWidth + @padding
+    canvasHeight = (@padding + @cellHeight) * boardHeight + @padding
+    $("""<canvas id="boardCanvas" width="#{canvasWidth}" height="#{canvasHeight}">No support</canvas>""")
+
+  draw: () ->
+    @drawCell x, y, (@game.cellState x, y) for x in [0..@game.width-1] for y in [0..@game.height-1]
+    return true # prevent perf hit from returning the result for each iteration above
+
+  drawCell: (x, y, state) ->
+    xCoord =  (@padding + @cellWidth) * x + @padding
+    yCoord =  (@padding + @cellHeight) * y + @padding
+
+    @canvas.fillStyle = if state then "rgb(0, #{@colorstep * (@maxage - state)}, 0)" else "rgb(230, 230, 230)"
+    @canvas.fillRect xCoord, yCoord, @cellWidth, @cellHeight
+
+  tick: () ->
+    @game.tick()
+    @draw()
+
+  eventToCell: (eventObj) ->
+    offset = $(eventObj.target).offset()
+    [xx, yy] = [eventObj.pageX - offset.left, eventObj.pageY - offset.top]
+    {x: (Math.floor xx / (@padding + @cellWidth)), y: (Math.floor yy / (@padding + @cellHeight))}
+
+  click: (eventObj) ->
+    cell = @eventToCell eventObj
+    @game.toggleCell cell.x, cell.y
+    @draw()
+
+game = new GamePresenter 55, 40, 100, 15
+game.start()
+    </script>
+    <title>Game of Life - CoffeeScript</title>
+  </head>
+  <body>
+    <button id="button_togglepause">Pause/Continue</button>
+    <button id="button_reset">Reset</button>
+    <button id="button_clear">Clear</button>
+  </body>
+</html>
